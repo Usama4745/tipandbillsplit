@@ -13,7 +13,7 @@ import {
 } from "@/lib/split";
 import { ChevronIcon, CloseIcon, MinusIcon, PlusIcon } from "./icons";
 
-const PRESETS = [10, 15, 18, 20, 25] as const;
+const PRESETS = [0, 10, 15, 18, 20, 25] as const;
 const STORAGE_KEY = "tip-splitter:v1";
 
 interface Person {
@@ -279,7 +279,7 @@ export default function TipSplitter() {
             title="Tip"
             aside={<p className="text-[14px] text-muted">Calculated on the pre-tax subtotal</p>}
           >
-            <div role="group" aria-label="Tip percentage" className="grid grid-cols-5 border-2 border-ink">
+            <div role="group" aria-label="Tip percentage" className="grid grid-cols-6 border-2 border-ink">
               {PRESETS.map((p) => {
                 const selected = !customActive && state.preset === p;
                 return (
