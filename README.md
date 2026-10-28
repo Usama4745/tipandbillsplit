@@ -58,6 +58,7 @@ app/                         Next.js App Router pages and global styles
 components/tip-splitter/     The splitter UI
 lib/split.ts                 All split maths (no UI), tested in lib/split.test.ts
 docs/                        App roles, jobs to be done, user stories, README assets
+transcripts/                 Prompts used to build the app
 ```
 
 ## Docs
@@ -65,6 +66,12 @@ docs/                        App roles, jobs to be done, user stories, README as
 - [App roles](docs/app-roles.md): who uses the app
 - [Jobs to be done](docs/jobs-to-be-done.md): why they use it
 - [User stories](docs/user-stories.md): how the app helps, with acceptance criteria
+
+## Transcripts
+
+The prompts used to build this app with Claude Code, in order:
+
+- [Session 01](transcripts/session-01.md): building the app, the 0% tip, split by amount, the docs and this README
 
 ## Tech stack
 

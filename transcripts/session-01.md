@@ -199,7 +199,7 @@ How the app helps them get the job done
 "As a [role], I want [capability], so that [benefit]." Each story names the job it serves and has acceptance criteria and a status.
 ~~~~
 
-**Result:** Created [docs/app-roles.md](docs/app-roles.md), [docs/jobs-to-be-done.md](docs/jobs-to-be-done.md) and [docs/user-stories.md](docs/user-stories.md).
+**Result:** Created [docs/app-roles.md](../docs/app-roles.md), [docs/jobs-to-be-done.md](../docs/jobs-to-be-done.md) and [docs/user-stories.md](../docs/user-stories.md).
 
 ---
 
@@ -207,7 +207,7 @@ How the app helps them get the job done
 
 edit  readme of how to setup project add this demourl  tipandbillsplit.vercel.app/ create screenshot of app and add it in readme also create 10 second demo video and add it in readme
 
-**Result:** Rewrote [README.md](README.md) with setup steps and the demo URL; added [docs/assets/screenshot.png](docs/assets/screenshot.png), [docs/assets/demo.gif](docs/assets/demo.gif) and [docs/assets/demo.mp4](docs/assets/demo.mp4).
+**Result:** Rewrote [README.md](../README.md) with setup steps and the demo URL; added [docs/assets/screenshot.png](../docs/assets/screenshot.png), [docs/assets/demo.gif](../docs/assets/demo.gif) and [docs/assets/demo.mp4](../docs/assets/demo.mp4).
 
 ---
 
