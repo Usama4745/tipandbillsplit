@@ -8,6 +8,7 @@ import {
   formatMoney,
   formatPct,
   parseNum,
+  type BillMode,
   type CurrencyCode,
   type SplitMode,
 } from "@/lib/split";
@@ -20,6 +21,8 @@ interface Person {
   id: number;
   name: string;
   tipPct: string;
+  /** Part of the bill this person owes (custom bill split). */
+  owed: string;
 }
 
 interface State {
@@ -31,12 +34,13 @@ interface State {
   preset: number;
   customTip: string;
   mode: SplitMode;
+  billMode: BillMode;
   people: Person[];
   nextId: number;
 }
 
 function defaultPeople(): Person[] {
-  return [1, 2, 3].map((i) => ({ id: i, name: `Person ${i}`, tipPct: "18" }));
+  return [1, 2, 3].map((i) => ({ id: i, name: `Person ${i}`, tipPct: "18", owed: "" }));
 }
 
 const DEFAULT_STATE: State = {
@@ -48,6 +52,7 @@ const DEFAULT_STATE: State = {
   preset: 18,
   customTip: "",
   mode: "equal",
+  billMode: "equal",
   people: defaultPeople(),
   nextId: 4,
 };
@@ -67,6 +72,7 @@ function readSaved(raw: string | null): State | null {
     typeof s.preset === "number" &&
     typeof s.customTip === "string" &&
     (s.mode === "equal" || s.mode === "individual") &&
+    (s.billMode === undefined || s.billMode === "equal" || s.billMode === "custom") &&
     Array.isArray(s.people) &&
     s.people.length > 0 &&
     s.people.every(
@@ -74,7 +80,9 @@ function readSaved(raw: string | null): State | null {
     );
   if (!ok) return null;
   const nextId = Math.max(s.nextId ?? 0, ...s.people!.map((p) => p.id + 1));
-  return { ...(s as State), nextId };
+  // Older saves have no bill split mode or owed amounts.
+  const people = s.people!.map((p) => ({ ...p, owed: typeof p.owed === "string" ? p.owed : "" }));
+  return { ...(s as State), billMode: s.billMode ?? "equal", people, nextId };
 }
 
 const pad = (i: number) => String(i + 1).padStart(2, "0");
@@ -108,10 +116,13 @@ export default function TipSplitter() {
   const update = (patch: Partial<State>) => setState((s) => ({ ...s, ...patch }));
 
   const result = useMemo(() => calculateSplit(state), [state]);
-  const { currency, people, mode } = state;
+  const { currency, people, mode, billMode } = state;
   const money = (v: number) => formatMoney(v, currency);
   const symbol = currencySymbol(currency);
   const individual = mode === "individual";
+  const custom = billMode === "custom";
+  // Shares differ between people, so "per person" figures are averages.
+  const uneven = individual || custom;
   const customActive = state.customTip.trim() !== "";
   const tipLabel = `${formatPct(result.tipPct)}%`;
   const n = people.length;
@@ -122,7 +133,7 @@ export default function TipSplitter() {
       ...s,
       people: [
         ...s.people,
-        { id: s.nextId, name: `Person ${s.people.length + 1}`, tipPct: formatPct(result.tipPct) },
+        { id: s.nextId, name: `Person ${s.people.length + 1}`, tipPct: formatPct(result.tipPct), owed: "" },
       ],
       nextId: s.nextId + 1,
     }));
@@ -143,9 +154,35 @@ export default function TipSplitter() {
 
   const clearAll = () => setState({ ...CLEARED_STATE, people: defaultPeople() });
 
-  const rowCols = individual
-    ? "grid-cols-[24px_minmax(0,1fr)_64px_auto_44px] sm:grid-cols-[36px_minmax(0,1fr)_88px_120px_44px]"
-    : "grid-cols-[24px_minmax(0,1fr)_auto_44px] sm:grid-cols-[36px_minmax(0,1fr)_120px_44px]";
+  // Phones keep 4 columns and move the Owes/Tip inputs to a second line;
+  // from `sm` up they get their own columns.
+  const rowCols = `grid-cols-[24px_minmax(0,1fr)_auto_44px] ${
+    custom && individual
+      ? "sm:grid-cols-[36px_minmax(0,1fr)_112px_88px_120px_44px]"
+      : custom
+        ? "sm:grid-cols-[36px_minmax(0,1fr)_112px_120px_44px]"
+        : individual
+          ? "sm:grid-cols-[36px_minmax(0,1fr)_88px_120px_44px]"
+          : "sm:grid-cols-[36px_minmax(0,1fr)_120px_44px]"
+  }`;
+  const hasInputs = custom || individual;
+
+  const billAmount = parseNum(state.amount);
+  // Placeholder for an empty "Owes" field: the share that person ends up with.
+  const fractionDigits =
+    new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits ?? 2;
+  const shareOf = (i: number) => (result.weights[i] * billAmount).toFixed(fractionDigits);
+  const overAssigned = custom && result.unassigned < -0.005;
+  const assignedText = `Assigned ${money(result.assigned)} of ${money(billAmount)}`;
+  const assignStatus =
+    billAmount <= 0
+      ? "Enter the total bill to check the amounts."
+      : overAssigned
+        ? `${assignedText} · over by ${money(-result.unassigned)}. Shares are scaled down to fit the bill.`
+        : result.unassigned > 0.005
+          ? `${assignedText} · ${money(result.unassigned)} left, split equally between everyone.`
+          : `${assignedText} · fully assigned.`;
 
   return (
     <div className="mx-auto max-w-[1360px] px-[clamp(16px,4vw,64px)] pt-8 pb-20">
@@ -155,6 +192,7 @@ export default function TipSplitter() {
         <ul className="flex flex-wrap gap-x-6 gap-y-1" aria-label="Current settings">
           <li>Currency — {currency}</li>
           <li>Party — {n}</li>
+          <li>Split — {custom ? "By amount" : "Equal"}</li>
           <li>Tip — {individual ? "Individual" : tipLabel}</li>
         </ul>
       </div>
@@ -308,24 +346,15 @@ export default function TipSplitter() {
                 value={state.customTip}
                 onChange={(v) => update({ customTip: v })}
               />
-              <div>
-                <span className="label block">Split the tip</span>
-                <div role="group" aria-label="Split the tip" className="mt-2 grid grid-cols-2 border-2 border-ink">
-                  {(["equal", "individual"] as const).map((m, i) => (
-                    <button
-                      key={m}
-                      type="button"
-                      aria-pressed={mode === m}
-                      onClick={() => update({ mode: m })}
-                      className={`h-11 text-[14px] font-bold tracking-[0.06em] uppercase transition-colors ${
-                        i > 0 ? "border-l-2 border-ink" : ""
-                      } ${mode === m ? "bg-accent text-white" : "hover:bg-ink/[.06]"}`}
-                    >
-                      {m === "equal" ? "Equally" : "Individually"}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <Segmented
+                label="Split the tip"
+                value={mode}
+                onChange={(m) => update({ mode: m })}
+                options={[
+                  { value: "equal", label: "Equally" },
+                  { value: "individual", label: "Individually" },
+                ]}
+              />
             </div>
 
             <div className="mt-10 grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-8 border-t border-ink pt-6">
@@ -347,7 +376,7 @@ export default function TipSplitter() {
                 </p>
                 <p className="mt-1 text-[14px] text-muted">
                   Tip per person {money(result.tip / result.n)}
-                  {individual ? " (avg.)" : ""}
+                  {uneven ? " (avg.)" : ""}
                 </p>
               </div>
             </div>
@@ -388,13 +417,31 @@ export default function TipSplitter() {
               </div>
             }
           >
+            <div className="mb-10 grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] items-end gap-8">
+              <Segmented
+                label="Split the bill"
+                value={billMode}
+                onChange={(m) => update({ billMode: m })}
+                options={[
+                  { value: "equal", label: "Equally" },
+                  { value: "custom", label: "By amount" },
+                ]}
+              />
+              <p className="text-[14px] leading-[1.45] text-muted">
+                {custom
+                  ? "Enter what each person owes of the bill. Tax, service and tip are shared in proportion."
+                  : "Everyone pays the same share of the bill."}
+              </p>
+            </div>
+
             <div
               aria-hidden="true"
               className={`grid ${rowCols} items-end gap-2 border-b border-ink pb-3 sm:gap-4`}
             >
               <span className="label">No.</span>
               <span className="label">Participant</span>
-              {individual && <span className="label">Tip</span>}
+              {custom && <span className="label hidden sm:block">Owes</span>}
+              {individual && <span className="label hidden sm:block">Tip</span>}
               <span className="label text-right">Pays</span>
               <span />
             </div>
@@ -405,7 +452,7 @@ export default function TipSplitter() {
                 return (
                   <li
                     key={p.id}
-                    className={`grid ${rowCols} min-h-[68px] items-center gap-2 border-b border-hairline sm:gap-4`}
+                    className={`grid ${rowCols} min-h-[68px] items-center gap-x-2 border-b border-hairline sm:gap-x-4`}
                   >
                     <span className="text-[15px] font-bold text-accent">{pad(i)}</span>
                     <div className="min-w-0">
@@ -423,24 +470,31 @@ export default function TipSplitter() {
                         className="h-11 w-full min-w-0 truncate border-b border-transparent bg-transparent text-[19px] font-semibold transition-colors hover:border-hairline focus:border-ink"
                       />
                     </div>
-                    {individual && (
-                      <div className="flex h-11 items-center border-b-2 border-ink">
-                        <label htmlFor={`tip-${p.id}`} className="sr-only">
-                          Tip percent for {name}
-                        </label>
-                        <input
-                          id={`tip-${p.id}`}
-                          type="text"
-                          inputMode="decimal"
-                          autoComplete="off"
-                          value={p.tipPct}
-                          placeholder="0"
-                          onChange={(e) => updatePerson(p.id, { tipPct: e.target.value })}
-                          className="h-full w-full min-w-0 bg-transparent text-[17px] font-semibold"
-                        />
-                        <span aria-hidden="true" className="text-[15px] font-semibold text-muted">
-                          %
-                        </span>
+                    {hasInputs && (
+                      // Second line on phones; separate columns from `sm` up.
+                      <div className="col-start-2 col-end-[-1] row-start-2 flex gap-4 pb-3 sm:contents">
+                        {custom && (
+                          <RowInput
+                            id={`owed-${p.id}`}
+                            short="Owes"
+                            label={`Amount ${name} owes`}
+                            prefix={symbol}
+                            placeholder={shareOf(i)}
+                            value={p.owed}
+                            onChange={(v) => updatePerson(p.id, { owed: v })}
+                          />
+                        )}
+                        {individual && (
+                          <RowInput
+                            id={`tip-${p.id}`}
+                            short="Tip"
+                            label={`Tip percent for ${name}`}
+                            suffix="%"
+                            placeholder="0"
+                            value={p.tipPct}
+                            onChange={(v) => updatePerson(p.id, { tipPct: v })}
+                          />
+                        )}
                       </div>
                     )}
                     <span className="text-right text-[17px] font-bold whitespace-nowrap sm:text-[19px]">
@@ -468,6 +522,17 @@ export default function TipSplitter() {
               <PlusIcon size={18} />
               Add participant
             </button>
+
+            {custom && (
+              <p
+                aria-live="polite"
+                className={`mt-5 text-[14px] leading-[1.45] ${
+                  overAssigned ? "font-semibold text-accent" : "text-muted"
+                }`}
+              >
+                {assignStatus}
+              </p>
+            )}
           </Section>
         </main>
 
@@ -508,12 +573,12 @@ export default function TipSplitter() {
             </dl>
 
             <PerPersonCard
-              label={individual ? "Average per person" : "Amount per person"}
+              label={uneven ? "Average per person" : "Amount per person"}
               amount={money(result.perPerson)}
               caption={`${peopleLabel} · ${money(result.total)} total`}
             />
 
-            {individual && (
+            {uneven && (
               <div className="mt-8">
                 <h3 className="label text-on-accent-muted">Each person pays</h3>
                 <ul className="mt-3">
@@ -525,7 +590,8 @@ export default function TipSplitter() {
                       <span className="min-w-0 truncate">
                         <span className="font-semibold">{displayName(p, i)}</span>{" "}
                         <span className="text-on-accent-muted">
-                          · tip {formatPct(parseNum(p.tipPct))}%
+                          {custom && ` · ${formatPct(Math.round(result.weights[i] * 1000) / 10)}% of bill`}
+                          {individual && ` · tip ${formatPct(parseNum(p.tipPct))}%`}
                         </span>
                       </span>
                       <span className="shrink-0 font-semibold">{money(result.personPays[i])}</span>
@@ -571,6 +637,92 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+function Segmented<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+}) {
+  return (
+    <div>
+      <span className="label block">{label}</span>
+      <div role="group" aria-label={label} className="mt-2 grid grid-cols-2 border-2 border-ink">
+        {options.map((o, i) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={value === o.value}
+            onClick={() => onChange(o.value)}
+            className={`h-11 text-[14px] font-bold tracking-[0.06em] uppercase transition-colors ${
+              i > 0 ? "border-l-2 border-ink" : ""
+            } ${value === o.value ? "bg-accent text-white" : "hover:bg-ink/[.06]"}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Small input inside a participant row (amount owed, tip %). */
+function RowInput({
+  id,
+  short,
+  label,
+  value,
+  onChange,
+  prefix,
+  suffix,
+  placeholder,
+}: {
+  id: string;
+  short: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  prefix?: string;
+  suffix?: string;
+  placeholder?: string;
+}) {
+  return (
+    <div className="min-w-0 flex-1 basis-0 sm:basis-auto">
+      {/* Mini label on phones; screen-reader only in the table layout. */}
+      <label htmlFor={id} className="label mb-0.5 block sm:sr-only">
+        <span aria-hidden="true">{short}</span>
+        <span className="sr-only">{label}</span>
+      </label>
+      <div className="flex h-11 items-center gap-1 border-b-2 border-ink outline-offset-2 focus-within:outline-3 focus-within:outline-accent">
+        {prefix && (
+          <span aria-hidden="true" className="shrink-0 text-[15px] font-semibold text-muted">
+            {prefix}
+          </span>
+        )}
+        <input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-full w-full min-w-0 bg-transparent text-[17px] font-semibold focus-visible:outline-none"
+        />
+        {suffix && (
+          <span aria-hidden="true" className="shrink-0 text-[15px] font-semibold text-muted">
+            {suffix}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tip & Bill Splitter
 
-## Getting Started
+Split a restaurant bill, with tax, service charge and tip, between everyone at the table. Every share updates as you type.
 
-First, run the development server:
+**Live demo:** [tipandbillsplit.vercel.app](https://tipandbillsplit.vercel.app/)
+
+![Tip & Bill Splitter screenshot](docs/assets/screenshot.png)
+
+## Demo
+
+![10 second demo: entering a bill, changing the tip, adding a person and splitting by amount](docs/assets/demo.gif)
+
+[Watch the demo as MP4](docs/assets/demo.mp4)
+
+## Features
+
+- Enter the bill in any of 10 currencies (USD, EUR, GBP, PKR, INR, AED, CAD, AUD, CHF, JPY)
+- Tax added on top, or taken out of a bill that already includes it
+- Service charge on the subtotal
+- Tip presets (0%, 10%, 15%, 18%, 20%, 25%) or a custom percent. Tip is worked out on the pre-tax subtotal.
+- Split the bill equally, or by what each person owes
+- Split the tip equally, or let each person pick their own percent
+- Full breakdown and what each person pays
+- Saves your last split in the browser. No account and no server.
+
+## Setup
+
+### Requirements
+
+- [Node.js](https://nodejs.org/) 20.9 or newer
+- npm (comes with Node.js)
+
+### Install and run
 
 ```bash
+git clone <repo-url>
+cd tipandbilsplitter
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command         | What it does                         |
+|-----------------|--------------------------------------|
+| `npm run dev`   | Start the dev server with hot reload |
+| `npm run build` | Build for production                 |
+| `npm start`     | Run the production build             |
+| `npm test`      | Run the unit tests (Vitest)          |
+| `npm run lint`  | Run ESLint                           |
 
-## Learn More
+## Project structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/                         Next.js App Router pages and global styles
+components/tip-splitter/     The splitter UI
+lib/split.ts                 All split maths (no UI), tested in lib/split.test.ts
+docs/                        App roles, jobs to be done, user stories, README assets
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Docs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- [App roles](docs/app-roles.md): who uses the app
+- [Jobs to be done](docs/jobs-to-be-done.md): why they use it
+- [User stories](docs/user-stories.md): how the app helps, with acceptance criteria
 
-## Deploy on Vercel
+## Tech stack
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Next.js 16, React 19, TypeScript, Tailwind CSS 4 and Vitest.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy
+
+The app is deployed on [Vercel](https://vercel.com). To deploy your own copy, import the repository in Vercel. It needs no environment variables.

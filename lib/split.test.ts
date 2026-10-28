@@ -143,3 +143,64 @@ describe("formatting", () => {
     expect(currencySymbol("EUR")).toBe("€");
   });
 });
+
+describe("custom bill split", () => {
+  // Bill 100 + 10% tax + 20% tip on the subtotal = 130 total.
+  const custom = (owed: string[], over: Partial<SplitInput> = {}) =>
+    calc({ billMode: "custom", people: owed.map((o) => ({ tipPct: "20", owed: o })), ...over });
+
+  it("charges each person in proportion to what they owe", () => {
+    const r = custom(["70", "30"]);
+    expect(r.weights).toEqual([expect.closeTo(0.7), expect.closeTo(0.3)]);
+    // 70 + 7 tax + 14 tip; 30 + 3 tax + 6 tip.
+    expect(r.personPays[0]).toBeCloseTo(91);
+    expect(r.personPays[1]).toBeCloseTo(39);
+    expect(r.unassigned).toBeCloseTo(0);
+  });
+
+  it("splits any unassigned amount equally", () => {
+    const r = custom(["60", ""]);
+    // 20 left over → 80 / 20.
+    expect(r.assigned).toBeCloseTo(60);
+    expect(r.unassigned).toBeCloseTo(40);
+    expect(r.weights).toEqual([expect.closeTo(0.8), expect.closeTo(0.2)]);
+    expect(r.personPays[0] + r.personPays[1]).toBeCloseTo(r.total);
+  });
+
+  it("matches the equal split when nobody has entered an amount", () => {
+    const r = custom(["", ""]);
+    expect(r.personPays).toEqual(calc({}).personPays);
+  });
+
+  it("scales shares down when more than the bill is assigned", () => {
+    const r = custom(["150", "50"]);
+    expect(r.unassigned).toBeCloseTo(-100);
+    expect(r.weights).toEqual([expect.closeTo(0.75), expect.closeTo(0.25)]);
+    expect(r.personPays[0] + r.personPays[1]).toBeCloseTo(130);
+  });
+
+  it("applies individual tips to each person's own share", () => {
+    const r = custom(["80", "20"], {
+      mode: "individual",
+      people: [
+        { owed: "80", tipPct: "10" },
+        { owed: "20", tipPct: "50" },
+      ],
+    });
+    expect(r.personTips[0]).toBeCloseTo(8);
+    expect(r.personTips[1]).toBeCloseTo(10);
+    expect(r.tip).toBeCloseTo(18);
+  });
+
+  it("works when tax is included in the amounts entered", () => {
+    const r = custom(["88", "22"], { amount: "110", includesTax: true });
+    expect(r.weights).toEqual([expect.closeTo(0.8), expect.closeTo(0.2)]);
+    expect(r.personPays[0]).toBeCloseTo(88 + 16);
+  });
+
+  it("handles an empty bill without dividing by zero", () => {
+    const r = custom(["", ""], { amount: "" });
+    expect(r.personPays).toEqual([0, 0]);
+    expect(r.weights).toEqual([0.5, 0.5]);
+  });
+});
